@@ -1,7 +1,12 @@
 from datetime import datetime
 from uuid import uuid4
-from fastapi import APIRouter, Body, HTTPException, status
+from fastapi import APIRouter, Body, HTTPException, status, Query
 from pydantic import UUID4
+from sqlalchemy.orm import Session
+from typing import List
+from fastapi_pagination import paginate, Page
+from sqlalchemy.exc import IntegrityError
+from database import get_db
 
 from workout_api.atleta.schemas import AtletaIn, AtletaOut, AtletaUpdate
 from workout_api.atleta.models import AtletaModel
@@ -12,6 +17,23 @@ from workout_api.contrib.dependencies import DatabaseDependency
 from sqlalchemy.future import select
 
 router = APIRouter()
+
+@router.get(
+    '/', 
+    response_model=List[Atleta])
+
+def get_atletas(
+    nome: str = Query(None), 
+    cpf: str = Query(None), 
+    db: Session = Depends(get_db)):
+    query = db.query(Atleta)
+    if nome:
+        query = query.filter(Atleta.nome == nome)
+    if cpf:
+        query = query.filter(Atleta.cpf == cpf)
+    atletas = query.all()
+    result = [{"nome": atleta.nome, "centro_treinamento": atleta.centro_treinamento, "categoria": atleta.categoria} for atleta in atletas]
+    return paginate(result)
 
 @router.post(
     '/', 
@@ -56,9 +78,8 @@ async def post(
         await db_session.commit()
     except Exception:
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, 
-            detail='Ocorreu um erro ao inserir os dados no banco'
-        )
+            status_code=303, 
+            detail=f"Já existe um atleta cadastrado com o cpf: {atleta.cpf}")
 
     return atleta_out
 
